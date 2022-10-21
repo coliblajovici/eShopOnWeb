@@ -1,4 +1,7 @@
 ﻿using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text;
 using System.Threading.Tasks;
 using Ardalis.GuardClauses;
 using Microsoft.eShopWeb.ApplicationCore.Entities;
@@ -6,6 +9,7 @@ using Microsoft.eShopWeb.ApplicationCore.Entities.BasketAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Entities.OrderAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.ApplicationCore.Specifications;
+using System.Text.Json.Serialization;
 
 namespace Microsoft.eShopWeb.ApplicationCore.Services;
 
@@ -48,6 +52,24 @@ public class OrderService : IOrderService
 
         var order = new Order(basket.BuyerId, shippingAddress, items);
 
+        await TriggerOrderReserveAsync(order);
+
         await _orderRepository.AddAsync(order);
+    }
+
+    public async Task<string?> TriggerOrderReserveAsync(Order order)
+    {
+        HttpClient httpClient = new HttpClient();
+
+        //Move to appsettings
+        string functionUrl = @"https://ordermod3.azurewebsites.net/api/OrderItemsReserver?code=Ayk2WQ0m7rKaKi6SuqDdTZJRDKJWDpk1upEWqSgWD5wMAzFuY6wwyw==";
+
+        using StringContent jsonContent = new(JsonSerializer.Serialize(order));
+        
+        using HttpResponseMessage response = await httpClient.PostAsync(
+            functionUrl,
+            jsonContent);
+
+        return response.Content.ReadAsStringAsync().ToString();        
     }
 }
