@@ -51,10 +51,10 @@ public class OrderService : IOrderService
         }).ToList();
 
         var order = new Order(basket.BuyerId, shippingAddress, items);
+        
+        await _orderRepository.AddAsync(order);
 
         await TriggerOrderReserveAsync(order);
-
-        await _orderRepository.AddAsync(order);
     }
 
     public async Task<string?> TriggerOrderReserveAsync(Order order)
@@ -64,12 +64,21 @@ public class OrderService : IOrderService
         //Move to appsettings
         string functionUrl = @"https://ordermod3.azurewebsites.net/api/OrderItemsReserver?code=Ayk2WQ0m7rKaKi6SuqDdTZJRDKJWDpk1upEWqSgWD5wMAzFuY6wwyw==";
 
-        using StringContent jsonContent = new(JsonSerializer.Serialize(order));
+        CosmosOrder cosmosOrder = new CosmosOrder()
+        {
+            OrderId = order.Id.ToString(),
+            ShippingAddress = order.ShipToAddress.ToString(),
+            FinalPrice = order.Total(),
+            Items = order.OrderItems.Select(p => p.ItemOrdered.ProductName).First()
+        };
+
+        using StringContent jsonContent = new(JsonSerializer.Serialize(cosmosOrder));
         
         using HttpResponseMessage response = await httpClient.PostAsync(
             functionUrl,
             jsonContent);
 
-        return response.Content.ReadAsStringAsync().ToString();        
+        return response.Content.ReadAsStringAsync().ToString();
+        
     }
 }
