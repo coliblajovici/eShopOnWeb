@@ -1,5 +1,6 @@
 ﻿using System.Net.Mime;
 using Ardalis.ListStartupServices;
+using Azure.Messaging.ServiceBus;
 using BlazorAdmin;
 using BlazorAdmin.Services;
 using Blazored.LocalStorage;
@@ -10,12 +11,15 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.eShopWeb;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
+using Microsoft.eShopWeb.ApplicationCore.ServiceBus;
 using Microsoft.eShopWeb.Infrastructure.Data;
 using Microsoft.eShopWeb.Infrastructure.Identity;
 using Microsoft.eShopWeb.Web;
 using Microsoft.eShopWeb.Web.Configuration;
 using Microsoft.eShopWeb.Web.HealthChecks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,6 +97,24 @@ builder.Services.AddScoped<HttpService>();
 builder.Services.AddBlazorServices();
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+builder.Services.Configure<EventBusConfiguration>(builder.Configuration.GetRequiredSection("ServiceBusConfig"));
+var eventBusConfiguration = builder.Configuration.GetRequiredSection("ServiceBusConfig").Get<EventBusConfiguration>();
+
+builder.Services.AddSingleton(implementationFactory =>
+{
+    var serviceBusClient = new ServiceBusClient(eventBusConfiguration.ConnectionString);
+    return serviceBusClient;
+});
+
+builder.Services.AddSingleton(implementationFactory =>
+{
+    var serviceBusClient = implementationFactory.GetRequiredService<ServiceBusClient>();
+    var serviceBusSender = serviceBusClient.CreateSender(eventBusConfiguration.TopicName);
+
+    return serviceBusSender;
+});
+
 
 var app = builder.Build();
 

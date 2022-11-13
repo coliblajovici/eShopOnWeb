@@ -9,10 +9,11 @@ using Microsoft.eShopWeb.ApplicationCore.Entities.BasketAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Entities.OrderAggregate;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.ApplicationCore.Specifications;
-using System.Text.Json.Serialization;
+using System;
+using Azure.Messaging.ServiceBus;
+using System.Collections.Generic;
 
 namespace Microsoft.eShopWeb.ApplicationCore.Services;
-
 public class OrderService : IOrderService
 {
     private readonly IRepository<Order> _orderRepository;
@@ -20,15 +21,19 @@ public class OrderService : IOrderService
     private readonly IRepository<Basket> _basketRepository;
     private readonly IRepository<CatalogItem> _itemRepository;
 
+    private readonly ServiceBusSender _serviceBusSender;
+
     public OrderService(IRepository<Basket> basketRepository,
         IRepository<CatalogItem> itemRepository,
         IRepository<Order> orderRepository,
+        ServiceBusSender serviceBusSender,
         IUriComposer uriComposer)
     {
         _orderRepository = orderRepository;
         _uriComposer = uriComposer;
         _basketRepository = basketRepository;
         _itemRepository = itemRepository;
+        _serviceBusSender = serviceBusSender;
     }
 
     public async Task CreateOrderAsync(int basketId, Address shippingAddress)
@@ -54,7 +59,31 @@ public class OrderService : IOrderService
         
         await _orderRepository.AddAsync(order);
 
-        await TriggerOrderReserveAsync(order);
+        await PublishOrderAsync(order);
+    }
+
+    public async Task PublishOrderAsync(Order order)
+    {
+        var orderPlacedEvent = new OrderPlacedEvent()
+        {
+            OrderId = order.Id.ToString(),
+            ShippingAddress = new Address(order.ShipToAddress.Street,order.ShipToAddress.City, order.ShipToAddress.State, order.ShipToAddress.Country, order.ShipToAddress.ZipCode),
+            FinalPrice = order.Total(),
+            Items = new List<string>(order.OrderItems.Select(p => p.ItemOrdered.ProductName))
+        };
+
+        var eventName = orderPlacedEvent.GetType().Name;
+        var jsonMessage = JsonSerializer.Serialize(orderPlacedEvent, orderPlacedEvent.GetType());
+        var body = Encoding.UTF8.GetBytes(jsonMessage);
+
+        var message = new ServiceBusMessage
+        {
+            MessageId = Guid.NewGuid().ToString(),
+            Subject = eventName,
+            Body = new BinaryData(body)
+        };
+
+        await _serviceBusSender.SendMessageAsync(message);
     }
 
     public async Task<string?> TriggerOrderReserveAsync(Order order)

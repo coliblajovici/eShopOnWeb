@@ -15,9 +15,9 @@ using System.Text.Json;
 
 namespace OrderFunctionApp;
 
-public static class OrderItemsReserver
+public static class OrderItemsReserverApi
 {
-    [FunctionName("OrderItemsReserver")]
+    [FunctionName("OrderItemsReserverApi")]
     public static async Task<IActionResult> Run(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
         ILogger log)
