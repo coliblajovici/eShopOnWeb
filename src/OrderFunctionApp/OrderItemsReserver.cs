@@ -1,7 +1,5 @@
 ﻿using System;
-using System.IO;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using Azure.Storage.Blobs;
@@ -11,7 +9,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace OrderFunctionApp;
 
-public static class OrderItemsReserverServiceBus
+public static class OrderItemsReserver
 {
     [FunctionName("OrderItemsReserver")]
     public static async Task Run(
@@ -26,13 +24,13 @@ public static class OrderItemsReserverServiceBus
 
         log.LogInformation($"Order received {orderPlacedCommand.OrderId}");
 
-        string name = $"order_{orderPlacedCommand.OrderId}";
-
         var config = new ConfigurationBuilder()
-            .SetBasePath(context.FunctionAppDirectory)
-            .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
-            .AddEnvironmentVariables()
-            .Build();        
+           .SetBasePath(context.FunctionAppDirectory)
+           .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
+           .AddEnvironmentVariables()
+           .Build();
+
+        string name = $"order_{orderPlacedCommand.OrderId}";           
 
         await UploadOrderToBlobStorage(config, name, message);
     }

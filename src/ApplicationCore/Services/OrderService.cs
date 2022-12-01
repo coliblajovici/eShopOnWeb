@@ -12,6 +12,8 @@ using Microsoft.eShopWeb.ApplicationCore.Specifications;
 using System;
 using Azure.Messaging.ServiceBus;
 using System.Collections.Generic;
+using Azure.Core.Extensions;
+using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.eShopWeb.ApplicationCore.Services;
 public class OrderService : IOrderService
@@ -20,6 +22,7 @@ public class OrderService : IOrderService
     private readonly IUriComposer _uriComposer;
     private readonly IRepository<Basket> _basketRepository;
     private readonly IRepository<CatalogItem> _itemRepository;
+    private readonly IConfiguration _configuration;
 
     private readonly ServiceBusSender _serviceBusSender;
 
@@ -27,13 +30,16 @@ public class OrderService : IOrderService
         IRepository<CatalogItem> itemRepository,
         IRepository<Order> orderRepository,
         ServiceBusSender serviceBusSender,
-        IUriComposer uriComposer)
+        IUriComposer uriComposer,
+        IConfiguration configuration
+        )
     {
         _orderRepository = orderRepository;
         _uriComposer = uriComposer;
         _basketRepository = basketRepository;
         _itemRepository = itemRepository;
         _serviceBusSender = serviceBusSender;
+        _configuration = configuration;
     }
 
     public async Task CreateOrderAsync(int basketId, Address shippingAddress)
@@ -60,9 +66,11 @@ public class OrderService : IOrderService
         await _orderRepository.AddAsync(order);
 
         await PublishOrderAsync(order);
+
+        await DeliverOrderAsync(order);
     }
 
-    public async Task PublishOrderAsync(Order order)
+    private async Task PublishOrderAsync(Order order)
     {
         var orderPlacedJson = CreateOrderCommandData(order);
        
@@ -100,22 +108,31 @@ public class OrderService : IOrderService
         return JsonSerializer.Serialize(orderPlacedCommand, orderPlacedCommand.GetType());        
     }
 
-    public async Task<string?> TriggerOrderReserveAsync(Order order)
+    private async Task<string?> DeliverOrderAsync(Order order)
     {
         HttpClient httpClient = new HttpClient();
+        
+        string functionUrl = _configuration["DeliveryOrderProcessorFunctionApp"];
 
-        //Move to appsettings
-        string functionUrl = @"https://ordermod3.azurewebsites.net/api/OrderItemsReserver?code=Ayk2WQ0m7rKaKi6SuqDdTZJRDKJWDpk1upEWqSgWD5wMAzFuY6wwyw==";
-
-        CosmosOrder cosmosOrder = new CosmosOrder()
+        DeliveryOrder deliveryOrder = new DeliveryOrder()
         {
             OrderId = order.Id.ToString(),
-            ShippingAddress = order.ShipToAddress.ToString(),
-            FinalPrice = order.Total(),
-            Items = order.OrderItems.Select(p => p.ItemOrdered.ProductName).First()
+            ShippingAddress = new Address(order.ShipToAddress.Street, order.ShipToAddress.City, order.ShipToAddress.State, order.ShipToAddress.Country, order.ShipToAddress.ZipCode),
+            FinalPrice = order.Total(),            
         };
 
-        using StringContent jsonContent = new(JsonSerializer.Serialize(cosmosOrder));
+        foreach (var item in order.OrderItems)
+        {
+            deliveryOrder.OrderItemDetails.Add(
+                new OrderItemDetail()
+                {
+                    ItemId = item.ItemOrdered.CatalogItemId,
+                    Name = item.ItemOrdered.ProductName,
+                    Quantity = item.Units
+                });
+        };
+
+        using StringContent jsonContent = new(JsonSerializer.Serialize(deliveryOrder));
         
         using HttpResponseMessage response = await httpClient.PostAsync(
             functionUrl,
