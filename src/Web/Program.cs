@@ -98,8 +98,8 @@ builder.Services.AddBlazorServices();
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-builder.Services.Configure<EventBusConfiguration>(builder.Configuration.GetRequiredSection("ServiceBusConfig"));
-var eventBusConfiguration = builder.Configuration.GetRequiredSection("ServiceBusConfig").Get<EventBusConfiguration>();
+builder.Services.Configure<ServiceBusConfiguration>(builder.Configuration.GetRequiredSection("ServiceBusConfig"));
+var eventBusConfiguration = builder.Configuration.GetRequiredSection("ServiceBusConfig").Get<ServiceBusConfiguration>();
 
 builder.Services.AddSingleton(implementationFactory =>
 {
@@ -110,7 +110,7 @@ builder.Services.AddSingleton(implementationFactory =>
 builder.Services.AddSingleton(implementationFactory =>
 {
     var serviceBusClient = implementationFactory.GetRequiredService<ServiceBusClient>();
-    var serviceBusSender = serviceBusClient.CreateSender(eventBusConfiguration.TopicName);
+    var serviceBusSender = serviceBusClient.CreateSender(eventBusConfiguration.Queue);
 
     return serviceBusSender;
 });

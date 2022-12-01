@@ -56,7 +56,7 @@ public class OrderService : IOrderService
         }).ToList();
 
         var order = new Order(basket.BuyerId, shippingAddress, items);
-        
+
         await _orderRepository.AddAsync(order);
 
         await PublishOrderAsync(order);
@@ -64,26 +64,40 @@ public class OrderService : IOrderService
 
     public async Task PublishOrderAsync(Order order)
     {
-        var orderPlacedEvent = new OrderPlacedEvent()
-        {
-            OrderId = order.Id.ToString(),
-            ShippingAddress = new Address(order.ShipToAddress.Street,order.ShipToAddress.City, order.ShipToAddress.State, order.ShipToAddress.Country, order.ShipToAddress.ZipCode),
-            FinalPrice = order.Total(),
-            Items = new List<string>(order.OrderItems.Select(p => p.ItemOrdered.ProductName))
-        };
-
-        var eventName = orderPlacedEvent.GetType().Name;
-        var jsonMessage = JsonSerializer.Serialize(orderPlacedEvent, orderPlacedEvent.GetType());
-        var body = Encoding.UTF8.GetBytes(jsonMessage);
+        var orderPlacedJson = CreateOrderCommandData(order);
+       
+        var body = Encoding.UTF8.GetBytes(orderPlacedJson);
 
         var message = new ServiceBusMessage
         {
             MessageId = Guid.NewGuid().ToString(),
-            Subject = eventName,
+            Subject = "Order placed " + order.Id,
             Body = new BinaryData(body)
         };
 
         await _serviceBusSender.SendMessageAsync(message);
+    }
+
+    private static string CreateOrderCommandData(Order order)
+    {
+        var orderPlacedCommand = new OrderPlacedCommand()
+        {
+            OrderId = order.Id.ToString(),
+            ShippingAddress = new Address(order.ShipToAddress.Street, order.ShipToAddress.City, order.ShipToAddress.State, order.ShipToAddress.Country, order.ShipToAddress.ZipCode),
+            FinalPrice = order.Total(),
+            OrderItemDetails = new List<OrderItemDetail>()
+        };
+
+        foreach (var item in order.OrderItems)
+        {
+            orderPlacedCommand.OrderItemDetails.Add(
+                new OrderItemDetail(){ 
+                    ItemId = item.ItemOrdered.CatalogItemId, 
+                    Name = item.ItemOrdered.ProductName, 
+                    Quantity = item.Units });
+        };
+
+        return JsonSerializer.Serialize(orderPlacedCommand, orderPlacedCommand.GetType());        
     }
 
     public async Task<string?> TriggerOrderReserveAsync(Order order)
